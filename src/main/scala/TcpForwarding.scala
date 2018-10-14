@@ -24,13 +24,38 @@ object TcpForwarding extends App {
 
   println(s"Started.\n$bindHost:$bindPort -> $targetHost:$targetPort")
 
+  if (HttpProxy.hostsReplacement) HttpProxy.printHostsReplacementRules()
+
   connections runForeach { connection ⇒
     val outgoingConnection = Tcp().outgoingConnection(targetHost, targetPort)
-    connection.handleWith(HttpProxy.printFirstLine.via(outgoingConnection))
+    connection.handleWith {
+      (if (HttpProxy.hostsReplacement)
+         HttpProxy.replaceHosts
+       else Flow[ByteString])
+        .via(outgoingConnection)
+    }
   }
 
   object HttpProxy {
-    val printFirstLine: Flow[ByteString, ByteString, NotUsed] =
+    import collection.JavaConverters._
+    private val hostsReplacementRules = config
+      .getObject("http-proxy.hosts-replacement-rule")
+      .unwrapped()
+      .asScala
+      .mapValues(_.toString)
+
+    val hostsReplacement: Boolean =
+      config.getBoolean("http-proxy.hosts-replacement") && hostsReplacementRules.nonEmpty
+
+    def printHostsReplacementRules(): Unit = {
+      hostsReplacementRules
+        .foreach {
+          case (key, value) =>
+            println(s"[http-proxy hosts replacement rules] $key -> $value")
+        }
+    }
+
+    val replaceHosts: Flow[ByteString, ByteString, NotUsed] =
       Flow.fromGraph(GraphDSL.create() { implicit builder =>
         import GraphDSL.Implicits._
 
@@ -53,11 +78,30 @@ object TcpForwarding extends App {
             if (line.nonEmpty) println(line.utf8String)
           }
 
+        val requestLinePattern = s"([^ ]+) ([^ ]+) (.*)".r
+        val replaceHostsIfNecessary = Flow[ByteString]
+          .map(_.utf8String)
+          .map {
+            case requestLinePattern(method, originalRequestURI, httpVersion)
+                if method == "CONNECT" =>
+              val host :: remain = originalRequestURI.split(':').toList
+              val requestURI = hostsReplacementRules
+                .get(host)
+                .map { replacedHost =>
+                  println(s"replaced: $host -> $replacedHost")
+                  (replacedHost :: remain).mkString(":")
+                }
+                .getOrElse(originalRequestURI)
+              s"$method $requestURI $httpVersion"
+            case line => line
+          }
+          .map(ByteString(_))
+
         val broadcast = builder.add(Broadcast[ByteString](2))
         val concat = builder.add(Concat[ByteString](2))
 
         broadcast.out(0) ~>
-          takeFirstLine ~> printLineIfNonEmpty ~>
+          takeFirstLine ~> replaceHostsIfNecessary ~> printLineIfNonEmpty ~>
           concat.in(0)
 
         broadcast.out(1) ~>
