@@ -9,3 +9,6 @@ lazy val root = (project in file(".")).settings(
   ),
   scalafmtOnCompile := true,
 )
+
+maintainer := "tksugimoto"
+enablePlugins(JavaAppPackaging)

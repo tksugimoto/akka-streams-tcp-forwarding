@@ -26,3 +26,13 @@ sbt run
 ```
 sbt -Dtcp-forwarding.bind.port=4567 -Dtcp-forwarding.target.host=10.1.2.3 -Dtcp-forwarding.target.port=3128 run
 ```
+
+## packaging
+1. package
+    ```
+    sbt clean universal:packageBin
+    ```
+1. `./target/universal/` に作成されたzipを適当な場所に解凍
+1. 実行設定
+    - 必要に応じて `./conf/application.ini` の設定を変更
+1. `./bin/` フォルダ内の実行ファイルを実行
