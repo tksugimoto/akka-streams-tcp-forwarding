@@ -59,20 +59,6 @@ object TcpForwarding extends App {
       Flow.fromGraph(GraphDSL.create() { implicit builder =>
         import GraphDSL.Implicits._
 
-        val CR = ByteString("\r")
-
-        // TODO: 効率化　(1Byteずつにsplitして判定するのは非効率)
-        val splitByteString = Flow[ByteString].mapConcat(_.map(ByteString(_)))
-
-        val takeFirstLine = Flow[ByteString]
-          .via(splitByteString)
-          .takeWhile(_ != CR)
-          .fold(ByteString.empty)(_ ++ _)
-
-        val dropFirstLine = Flow[ByteString]
-          .via(splitByteString)
-          .dropWhile(_ != CR)
-
         val printLineIfNonEmpty = Flow[ByteString]
           .wireTap { line: ByteString =>
             if (line.nonEmpty) println(line.utf8String)
@@ -99,6 +85,8 @@ object TcpForwarding extends App {
 
         val broadcast = builder.add(Broadcast[ByteString](2))
         val concat = builder.add(Concat[ByteString](2))
+
+        import HttpLineSeparator.{dropFirstLine, takeFirstLine}
 
         broadcast.out(0) ~>
           takeFirstLine ~> replaceHostsIfNecessary ~> printLineIfNonEmpty ~>
