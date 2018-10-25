@@ -1,7 +1,10 @@
+import java.util.Date
+
 import akka.actor.ActorSystem
 import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Tcp.{IncomingConnection, ServerBinding}
-import akka.stream.scaladsl.{Source, Tcp}
+import akka.stream.scaladsl.{Flow, Source, Tcp}
+import akka.util.ByteString
 
 import scala.concurrent.Future
 
@@ -23,7 +26,21 @@ object TcpForwarding extends App {
   println(s"Started.\n$bindHost:$bindPort -> $targetHost:$targetPort")
 
   connections runForeach { connection ⇒
-    val outgoingConnection = Tcp().outgoingConnection(targetHost, targetPort)
+    println(
+      s"[${new Date}] localAddress: ${connection.localAddress}, remoteAddress: ${connection.remoteAddress}")
     connection.handleWith(outgoingConnection)
+  }
+
+  def outgoingConnectionFactory(firstElement: ByteString) =
+    firstElement.utf8String match {
+      case firstLine =>
+        println(s"[${new Date}] firstLine(${firstLine.length}): $firstLine")
+        val outgoingConnection =
+          Tcp().outgoingConnection(targetHost, targetPort)
+        Future.successful(outgoingConnection)
+    }
+  val outgoingConnection: Flow[ByteString, ByteString, Any] = {
+    import HttpRequestFlow.groupFirstLine
+    groupFirstLine.via(Flow.lazyInit(outgoingConnectionFactory, () => ()))
   }
 }
