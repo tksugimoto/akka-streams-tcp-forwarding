@@ -1,8 +1,8 @@
 import akka.NotUsed
 import akka.actor.ActorSystem
+import akka.stream.ActorMaterializer
 import akka.stream.scaladsl.Tcp.{IncomingConnection, ServerBinding}
-import akka.stream.scaladsl.{Broadcast, Concat, Flow, GraphDSL, Source, Tcp}
-import akka.stream.{ActorMaterializer, FlowShape}
+import akka.stream.scaladsl.{Flow, Source, Tcp}
 import akka.util.ByteString
 
 import scala.concurrent.Future
@@ -55,48 +55,33 @@ object TcpForwarding extends App {
         }
     }
 
-    val replaceHosts: Flow[ByteString, ByteString, NotUsed] =
-      Flow.fromGraph(GraphDSL.create() { implicit builder =>
-        import GraphDSL.Implicits._
+    val replaceHosts: Flow[ByteString, ByteString, NotUsed] = {
+      val printLineIfNonEmpty = Flow[ByteString]
+        .wireTap { line: ByteString =>
+          if (line.nonEmpty) println(line.utf8String)
+        }
 
-        val printLineIfNonEmpty = Flow[ByteString]
-          .wireTap { line: ByteString =>
-            if (line.nonEmpty) println(line.utf8String)
-          }
+      val requestLinePattern = s"([^ ]+) ([^ ]+) (.*)".r
+      val replaceHostsIfNecessary = Flow[ByteString]
+        .map(_.utf8String)
+        .map {
+          case requestLinePattern(method, originalRequestURI, httpVersion)
+              if method == "CONNECT" =>
+            val host :: remain = originalRequestURI.split(':').toList
+            val requestURI = hostsReplacementRules
+              .get(host)
+              .map { replacedHost =>
+                println(s"replaced: $host -> $replacedHost")
+                (replacedHost :: remain).mkString(":")
+              }
+              .getOrElse(originalRequestURI)
+            s"$method $requestURI $httpVersion"
+          case line => line
+        }
+        .map(ByteString(_))
 
-        val requestLinePattern = s"([^ ]+) ([^ ]+) (.*)".r
-        val replaceHostsIfNecessary = Flow[ByteString]
-          .map(_.utf8String)
-          .map {
-            case requestLinePattern(method, originalRequestURI, httpVersion)
-                if method == "CONNECT" =>
-              val host :: remain = originalRequestURI.split(':').toList
-              val requestURI = hostsReplacementRules
-                .get(host)
-                .map { replacedHost =>
-                  println(s"replaced: $host -> $replacedHost")
-                  (replacedHost :: remain).mkString(":")
-                }
-                .getOrElse(originalRequestURI)
-              s"$method $requestURI $httpVersion"
-            case line => line
-          }
-          .map(ByteString(_))
-
-        val broadcast = builder.add(Broadcast[ByteString](2))
-        val concat = builder.add(Concat[ByteString](2))
-
-        import HttpLineSeparator.{dropFirstLine, takeFirstLine}
-
-        broadcast.out(0) ~>
-          takeFirstLine ~> replaceHostsIfNecessary ~> printLineIfNonEmpty ~>
-          concat.in(0)
-
-        broadcast.out(1) ~>
-          dropFirstLine ~>
-          concat.in(1)
-
-        FlowShape(broadcast.in, concat.out)
-      })
+      import HttpRequestFlow.convertFirstLine
+      convertFirstLine(replaceHostsIfNecessary.via(printLineIfNonEmpty))
+    }
   }
 }
