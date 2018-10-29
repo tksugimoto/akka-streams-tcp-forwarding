@@ -12,6 +12,7 @@ object HttpLineSeparator {
     .via(splitByteString)
     .takeWhile(_ != CR)
     .fold(ByteString.empty)(_ ++ _)
+    .filterNot(_.isEmpty)
 
   val dropFirstLine: Flow[ByteString, ByteString, NotUsed] = Flow[ByteString]
     .via(splitByteString)
