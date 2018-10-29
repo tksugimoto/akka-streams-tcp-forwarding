@@ -20,12 +20,16 @@ object HttpRequestFlow {
       val broadcast = builder.add(Broadcast[ByteString](2))
       val concat = builder.add(Concat[ByteString](2))
 
-      broadcast.out(0) ~>
-        takeFirstLine ~> f ~>
+      broadcast
+        .out(0) ~>
+        takeFirstLine ~>
+        util.LogFlow.log("after takeFirstLine") ~>
+        f ~>
         concat.in(0)
 
       broadcast.out(1) ~>
         dropFirstLine ~>
+        util.LogFlow.log("after dropFirstLine") ~>
         concat.in(1)
 
       FlowShape(broadcast.in, concat.out)

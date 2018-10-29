@@ -28,7 +28,8 @@ object TcpForwarding extends App {
   connections runForeach { connection ⇒
     println(
       s"[${new Date}] localAddress: ${connection.localAddress}, remoteAddress: ${connection.remoteAddress}")
-    connection.handleWith(outgoingConnection)
+    val logFlow = util.LogFlow.log(s"input - ${connection.remoteAddress}")
+    connection.handleWith(logFlow.via(outgoingConnection))
   }
 
   def outgoingConnectionFactory(firstElement: ByteString) =
@@ -41,6 +42,7 @@ object TcpForwarding extends App {
     }
   val outgoingConnection: Flow[ByteString, ByteString, Any] = {
     import HttpRequestFlow.groupFirstLine
-    groupFirstLine.via(Flow.lazyInit(outgoingConnectionFactory, () => ()))
+    groupFirstLine
+      .via(Flow.lazyInit(outgoingConnectionFactory, () => ()))
   }
 }
