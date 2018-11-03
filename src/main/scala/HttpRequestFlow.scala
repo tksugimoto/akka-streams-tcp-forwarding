@@ -30,4 +30,12 @@ object HttpRequestFlow {
 
       FlowShape(broadcast.in, concat.out)
     })
+
+  /**
+    * HTTPリクエストの1行目（CRLFを除く）のみをstreamsの1要素目に流すflow
+    * （1行目のCRLFと2行目以降は2要素目以降に流れる）
+    * @return
+    */
+  def groupFirstLine: Flow[ByteString, ByteString, NotUsed] =
+    convertFirstLine(Flow[ByteString])
 }
