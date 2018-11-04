@@ -32,6 +32,20 @@ class HttpLineSeparatorSpec
         .expectNext(ByteString("CONNECT example.com:443 HTTP1.1"))
         .expectComplete()
     }
+    "sourceが未完了でも1行目の終わりに到達したら完了する" in {
+      val source = Source.repeat(
+        ByteString(
+          "CONNECT example.com:443 HTTP1.1\r\nHost: example.com:443\r\n\r\n"
+        )
+      )
+
+      source
+        .via(takeFirstLine)
+        .runWith(TestSink.probe[ByteString])
+        .request(1)
+        .expectNext(ByteString("CONNECT example.com:443 HTTP1.1"))
+        .expectComplete()
+    }
     "1行目が分離してても1行目部分のみを取得する" in {
       val source = Source(
         List(
