@@ -6,6 +6,7 @@ object HttpLineSeparator {
   private val CR: Byte = ByteString("\r")(0)
 
   val takeFirstLine: Flow[ByteString, ByteString, NotUsed] = Flow[ByteString]
+    .takeWhile(!_.contains(CR), inclusive = true)
     .statefulMapConcat { () =>
       var inFirstLine = true
       input =>
