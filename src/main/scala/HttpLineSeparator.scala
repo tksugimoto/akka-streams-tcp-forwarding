@@ -14,10 +14,7 @@ object HttpLineSeparator {
     .fold(ByteString.empty)(_ ++ _)
     .filterNot(_.isEmpty)
 
-  import scala.concurrent.duration._
   val dropFirstLine: Flow[ByteString, ByteString, NotUsed] = Flow[ByteString]
     .via(splitByteString)
     .dropWhile(_ != CR)
-    .groupedWithin(100, 1.second)
-    .map(_.reduce(_ ++ _))
 }
